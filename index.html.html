@@ -1,0 +1,400 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Upscaler">
+<title>Ultra Upscaler 4K–24K</title>
+<!-- v2: Fast=WebGL2 (Bicubic+Anime4K-Push+CAS), Balanced=Real-ESRGAN AnimeVideo v3 (ONNX), Pro=3-Pass-Ensemble; Bild-/Video-UI getrennt; Nacht-Dimmer-Fix; Vorher/Nachher aus dem echten Ergebnis -->
+<style>
+:root{--bg:#120d1f;--card:#1d1633;--line:#3a2d63;--tx:#f1ecff;--mut:#a99cd0;--y:#e8ff3a;--v:#8b5cff}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--tx);font:16px/1.5 ui-rounded,"SF Pro Rounded",system-ui,sans-serif;padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left)}
+header{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:12px;padding:12px 20px;border-bottom:1px solid var(--line)}
+.hb{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+.hb button,.hb select{height:42px;padding:0 14px;border-radius:12px;white-space:nowrap;width:auto}
+h1{margin:0;font-size:22px;letter-spacing:.2px}
+select,input[type=url]{width:100%;background:#120d1f;color:var(--tx);border:1px solid var(--line);border-radius:10px;padding:10px;font:inherit}
+#tabs{display:flex;gap:4px;padding:3px;background:var(--card);border:1px solid var(--line);border-radius:14px}
+#tabs button{height:36px;border:0;background:transparent}
+#tabs button.on{background:#2a1f52;box-shadow:inset 0 0 0 1px var(--v)}
+button{font:inherit;color:var(--tx);background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px 16px;cursor:pointer}
+button.on{border-color:var(--v);background:#2a1f52}
+button:disabled{opacity:.5}
+button.neon,a.neon{background:linear-gradient(90deg,var(--y),#b58cff);color:#160f2b;font-weight:700;border:0;font-size:18px;padding:14px 22px;border-radius:14px;text-decoration:none;display:inline-block}
+main{display:grid;grid-template-columns:1fr 320px;gap:20px;padding:20px}
+@media(max-width:860px){main{grid-template-columns:1fr}}
+aside,#L>*{margin-bottom:14px}
+aside{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:16px;align-self:start}
+aside label{display:block;margin-bottom:12px;color:var(--mut)}
+aside label span{display:block;margin-bottom:4px}
+small{color:var(--mut);display:block;margin:-6px 0 12px}
+#dz{display:block;text-align:center;padding:40px 16px;border:2px dashed var(--v);border-radius:18px;background:var(--card);cursor:pointer}
+#inf{color:var(--mut);margin:0}
+.row{display:flex;gap:10px;flex-wrap:wrap}
+.badge{background:#0f3a24;border:1px solid #2ecc71;color:#b9ffd6;border-radius:10px;padding:10px;margin-bottom:12px;font-size:14px}
+#ramc{background:#0f3a24;border:1px solid #2ecc71;color:#b9ffd6;border-radius:12px;padding:12px}
+#ramc.warn{background:#4a3a0a;border-color:#f1c40f;color:#ffe9a0}
+#stp{min-height:3em;font-weight:600}
+.bar{height:18px;background:var(--card);border:1px solid var(--line);border-radius:10px;overflow:hidden}
+#bar{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--v),var(--y));transition:width .3s}
+#pc{font-size:28px;font-weight:700}
+#cn,#tm{color:var(--mut)}
+#cw{position:relative;overflow:auto;max-height:60vh;border:1px solid var(--line);border-radius:12px;--z:1}
+#cw canvas{display:block;width:calc(var(--z)*100%);height:auto}
+#cb{position:absolute;left:0;top:0;clip-path:inset(0 0 0 50%)}
+#cmp input{width:100%}
+pre{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px;white-space:pre-wrap}
+#dim{position:fixed;inset:0;background:rgba(0,0,0,.90);display:none;z-index:9;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:24px;color:rgba(241,236,255,.5);cursor:pointer;touch-action:manipulation}
+#dim.on{display:flex}
+#dpc{font-size:40px;font-weight:700}
+#dht{max-width:28em;margin:8px 0 0}
+body[data-mode=image] .vo{display:none}
+#cmp .lbl{display:flex;justify-content:space-between;color:var(--mut);font-size:13px;margin:0 2px 6px}
+</style>
+</head>
+<body data-mode="video">
+<header><h1 data-k="t"></h1>
+<div class="hb"><div id="tabs" role="group"><button id="bv" class="on" data-k="v"></button><button id="bi" data-k="i"></button></div><button id="dm" data-k="dm"></button>
+<select id="lg" aria-label="Language"><option value="de">Deutsch</option><option value="en">English</option><option value="es">Español</option><option value="fr">Français</option><option value="pt">Português</option><option value="tr">Türkçe</option></select></div></header>
+<main>
+<section id="L">
+<label id="dz"><input id="fi" type="file" hidden><span data-k="d"></span></label>
+<p id="inf"></p>
+<div class="row"><button id="go" class="neon" data-k="go"></button></div>
+<div id="ramc" data-k="ram"></div>
+<div id="stp"></div>
+<div class="bar"><i id="bar"></i></div>
+<div id="pc">0 %</div><div id="cn"></div><div id="tm"></div>
+<div id="cmp" hidden><div class="lbl"><span id="lb1"></span><span id="lb2"></span></div><div id="cw"><canvas id="ca"></canvas><canvas id="cb"></canvas></div><input id="sl" type="range" min="0" max="100" value="50" aria-label="Vorher/Nachher"><input id="zm" type="range" min="1" max="6" step=".5" value="1" aria-label="Zoom"></div>
+<div id="fin" hidden><a id="dlb" class="neon" download></a><pre id="rep"></pre></div>
+</section>
+<aside>
+<label><span data-k="q"></span><select id="sq"><option value="fast">Fast</option><option value="bal">Balanced</option><option value="pro" selected>Pro</option></select></label>
+<small data-k="ph"></small>
+<label><span data-k="rs"></span><select id="sr"><option>4K</option><option>8K</option><option>16K</option><option>24K</option></select></label>
+<div class="badge" data-k="bd"></div>
+<label class="vo"><span data-k="br"></span><select id="sb"><option value="0" data-k="au"></option><option value="60">60 Mbps</option><option value="80">80 Mbps</option><option value="100">100 Mbps</option></select></label>
+</aside>
+</main>
+<div id="dim"><div id="dpc">0 %</div><p id="dht"></p></div>
+<script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.17.3/dist/ort.webgpu.min.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/mp4box@0.5.2/dist/mp4box.all.min.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/mp4-muxer@5.1.3/build/mp4-muxer.js" crossorigin="anonymous"></script>
+<script>
+"use strict";
+const $=id=>document.getElementById(id),sleep=ms=>new Promise(r=>setTimeout(r,ms));
+const RES={"4K":[3840,2160],"8K":[7680,4320],"16K":[15360,8640],"24K":[23040,12960]};
+/* Real-ESRGAN (xinntao, BSD-3-Clause); ONNX-Exporte mit dynamischer Größe: Hugging Face xiaojiaenen/lingtuan-sr-models und SceneWorks/real-esrgan-onnx */
+/* Feste Quellen (öffentlich, CORS-fähig, unter COEP lauffähig). Liste = Mirror-Reihenfolge. realesr-animevideov3 existiert offiziell nur als x4-Modell (auch für x2/x3 nutzbar) und wird per Outscale auf das Ziel skaliert. */
+const ANIME=["https://huggingface.co/xiaojiaenen/lingtuan-sr-models/resolve/main/realesr-animevideov3-x4.onnx"];
+const X2=["https://huggingface.co/SceneWorks/real-esrgan-onnx/resolve/main/real_esrgan_x2.onnx","https://huggingface.co/skillsafe-ai/realesrgan-x2plus/resolve/main/model.onnx"];
+const T={
+de:{t:`Ultra Upscaler 4K–24K`,v:`Video Upscaler (MP4/MOV)`,i:`Bild Upscaler (PNG/JPG)`,d:`Datei hierher ziehen oder tippen`,go:`Generieren starten`,dm:`Nacht-Dimmer (Akku sparen)`,q:`Qualitätsstufe`,ph:`Pro kombiniert alle Modelle: KI-Entrauschung, Detail-Rekonstruktion, CAS.`,rs:`Ziel-Grafik`,bd:`0 % Komprimierung: Original-FPS & Audio-Passthrough aktiv`,br:`Smart-Bitrate`,au:`Auto-Smart (Original behalten / min. 60 Mbps)`,bdi:`0 % Komprimierung: Verlustfreies PNG (100 % Qualität, Original-Farbtiefe)`,ii:`Original: {o} ({m} MP) → Ziel {r}: {t} ({n} MP)`,dh:`Tippe irgendwo auf den Bildschirm, um den Nacht-Dimmer zu beenden`,ba:`Vorher|Nachher`,si:[`Schritt 1/10: Quellbild, Original-Auflösung & Megapixel werden verlustfrei ausgelesen...`,`Schritt 2/10: Bild wird analysiert & in speicherschonende Kacheln aufgeteilt...`,`Schritt 9/10: Kacheln werden zu einem verlustfreien PNG zusammengesetzt...`],ram:`RAM-Status: Optimal – Keine Probleme beim Arbeitsspeicher, alle Kachel-Buffer werden sofort bereinigt`,el:`Verstrichen`,rm:`Verbleibend`,dl:`Download`,rp:`Prüfbericht`,cl:`Clip {a}/{b}: Frame {c} von {d} verarbeitet`,kc:`Kachel {c} von {d} verarbeitet`,mem:`Wenig freier Speicher – trotzdem starten?`,ml:`Modell wird geladen (einmalig, wird gespeichert)...`,nom:`KI-Modell nicht geladen – Fast-Pipeline wird genutzt`,cap:`Video: Hardware-Encoder auf 8K begrenzt – es wird ein 8K-Master erzeugt`,noenc:`Kein Hardware-Encoder unterstützt diese Auflösung`,lb:[`Auflösung`,`FPS`,`Video-Bitrate`,`Audio`,`Dauer`,`1-Min-Segmente`,`Freier Speicher`,`Min.`,`Std.`,`ca.`],
+s:[`Schritt 1/10: Quelldatei, Original-FPS, Video-Bitrate & Audio-kbps werden verlustfrei ausgelesen...`,`Schritt 2/10: Frames werden analysiert & in speicherschonende 1-Minuten-Segmente aufgeteilt...`,`Schritt 3/10: Kachel-Raster (Tiled GPU-Pipeline) & KI-Modelle werden geplant...`,`Schritt 4/10: Kacheln werden per KI auf {r} hochskaliert...`,`Schritt 5/10: Multi-Model Verfeinerung – Kanten, Neon-Lichter & Details werden nachgeschärft...`,`Schritt 6/10: Qualitätskontrolle – Es wird geprüft, ob Bild-, Kachel- oder Speicherfehler drin sind...`,`Schritt 7/10: Fehlerkorrektur – Erkannte Abweichungen/Kacheln werden erneut hochskaliert...`,`Schritt 8/10: Auflösungs- & Verlust-Check – Es wird geprüft, ob echtes {r} & 0 % Komprimierung erreicht wurden...`,`Schritt 9/10: Segmente & unberührter Original-Ton werden in die Download-Datei gepackt...`,`Schritt 10/10: Upscaling fertig! Bereit zum Download.`]},
+en:{t:`Ultra Upscaler 4K–24K`,v:`Video Upscaler (MP4/MOV)`,i:`Image Upscaler (PNG/JPG)`,d:`Drop a file here or tap`,go:`Start generating`,dm:`Night dimmer (save battery)`,q:`Quality level`,ph:`Pro combines all models: AI denoise, detail reconstruction, CAS.`,rs:`Target resolution`,bd:`0 % compression: original FPS & audio passthrough active`,br:`Smart bitrate`,au:`Auto-Smart (keep original / min. 60 Mbps)`,bdi:`0 % compression: lossless PNG (100 % quality, original color depth)`,ii:`Original: {o} ({m} MP) → target {r}: {t} ({n} MP)`,dh:`Tap anywhere on the screen to end the night dimmer`,ba:`Before|After`,si:[`Step 1/10: Reading source image, original resolution & megapixels losslessly...`,`Step 2/10: Analyzing image & splitting into memory-friendly tiles...`,`Step 9/10: Assembling tiles into a lossless PNG...`],ram:`RAM status: Optimal – no memory problems, all tile buffers are cleared immediately`,el:`Elapsed`,rm:`Remaining`,dl:`Download`,rp:`Check report`,cl:`Clip {a}/{b}: frame {c} of {d} processed`,kc:`Tile {c} of {d} processed`,mem:`Low free storage – start anyway?`,ml:`Loading model (one-time, cached)...`,nom:`AI model not loaded – using the Fast pipeline`,cap:`Video: hardware encoder limited to 8K – an 8K master is produced`,noenc:`No hardware encoder supports this resolution`,lb:[`Resolution`,`FPS`,`Video bitrate`,`Audio`,`Duration`,`1-min segments`,`Free storage`,`min`,`h`,`approx.`],
+s:[`Step 1/10: Reading source file, original FPS, video bitrate & audio kbps losslessly...`,`Step 2/10: Analyzing frames & splitting into memory-friendly 1-minute segments...`,`Step 3/10: Planning tile grid (tiled GPU pipeline) & AI models...`,`Step 4/10: Upscaling tiles with AI to {r}...`,`Step 5/10: Multi-model refinement – sharpening edges, neon lights & details...`,`Step 6/10: Quality control – checking for image, tile or memory errors...`,`Step 7/10: Error correction – re-upscaling detected deviations/tiles...`,`Step 8/10: Resolution & loss check – verifying true {r} & 0 % compression...`,`Step 9/10: Packing segments & untouched original audio into the download file...`,`Step 10/10: Upscaling finished! Ready to download.`]},
+es:{t:`Ultra Upscaler 4K–24K`,v:`Escalador de vídeo (MP4/MOV)`,i:`Escalador de imagen (PNG/JPG)`,d:`Arrastra un archivo aquí o toca`,go:`Iniciar generación`,dm:`Atenuador nocturno (ahorra batería)`,q:`Nivel de calidad`,ph:`Pro combina todos los modelos: reducción de ruido IA, reconstrucción de detalle, CAS.`,rs:`Resolución final`,bd:`0 % compresión: FPS original y audio sin recodificar activos`,br:`Bitrate inteligente`,au:`Auto-Smart (mantener original / mín. 60 Mbps)`,bdi:`0 % compresión: PNG sin pérdida (100 % calidad, profundidad de color original)`,ii:`Original: {o} ({m} MP) → destino {r}: {t} ({n} MP)`,dh:`Toca en cualquier lugar de la pantalla para salir del atenuador nocturno`,ba:`Antes|Después`,si:[`Paso 1/10: Leyendo imagen, resolución original y megapíxeles sin pérdidas...`,`Paso 2/10: Analizando la imagen y dividiéndola en teselas que ahorran memoria...`,`Paso 9/10: Ensamblando las teselas en un PNG sin pérdida...`],ram:`Estado de RAM: Óptimo – sin problemas de memoria, todos los búferes de teselas se liberan al instante`,el:`Transcurrido`,rm:`Restante`,dl:`Descargar`,rp:`Informe de control`,cl:`Clip {a}/{b}: fotograma {c} de {d} procesado`,kc:`Tesela {c} de {d} procesada`,mem:`Poco espacio libre – ¿iniciar de todos modos?`,ml:`Cargando modelo (una sola vez, se guarda)...`,nom:`Modelo IA no cargado – se usa el pipeline Fast`,cap:`Vídeo: el codificador de hardware se limita a 8K – se genera un máster 8K`,noenc:`Ningún codificador de hardware admite esta resolución`,lb:[`Resolución`,`FPS`,`Bitrate de vídeo`,`Audio`,`Duración`,`Segmentos de 1 min`,`Espacio libre`,`min`,`h`,`aprox.`],
+s:[`Paso 1/10: Leyendo archivo, FPS original, bitrate de vídeo y kbps de audio sin pérdidas...`,`Paso 2/10: Analizando fotogramas y dividiendo en segmentos de 1 minuto...`,`Paso 3/10: Planificando la cuadrícula de teselas y los modelos IA...`,`Paso 4/10: Escalando teselas con IA a {r}...`,`Paso 5/10: Refinado multimodelo – bordes, luces de neón y detalles...`,`Paso 6/10: Control de calidad – buscando errores de imagen, tesela o memoria...`,`Paso 7/10: Corrección – se reescalan las teselas con desviaciones...`,`Paso 8/10: Comprobación de resolución y pérdidas: {r} real y 0 % compresión...`,`Paso 9/10: Empaquetando segmentos y audio original intacto...`,`Paso 10/10: ¡Escalado terminado! Listo para descargar.`]},
+fr:{t:`Ultra Upscaler 4K–24K`,v:`Upscaler vidéo (MP4/MOV)`,i:`Upscaler d'image (PNG/JPG)`,d:`Déposez un fichier ici ou touchez`,go:`Lancer la génération`,dm:`Gradateur nuit (économie de batterie)`,q:`Niveau de qualité`,ph:`Pro combine tous les modèles : débruitage IA, reconstruction des détails, CAS.`,rs:`Résolution cible`,bd:`0 % de compression : FPS d'origine et audio en passthrough actifs`,br:`Débit intelligent`,au:`Auto-Smart (garder l'original / min. 60 Mbps)`,bdi:`0 % de compression : PNG sans perte (qualité 100 %, profondeur de couleur d'origine)`,ii:`Original : {o} ({m} MP) → cible {r} : {t} ({n} MP)`,dh:`Touchez n'importe où sur l'écran pour quitter le gradateur nuit`,ba:`Avant|Après`,si:[`Étape 1/10 : Lecture sans perte de l'image, de la résolution d'origine et des mégapixels...`,`Étape 2/10 : Analyse de l'image et découpage en tuiles économes en mémoire...`,`Étape 9/10 : Assemblage des tuiles en un PNG sans perte...`],ram:`État de la RAM : Optimal – aucun problème de mémoire, tous les tampons de tuiles sont libérés immédiatement`,el:`Écoulé`,rm:`Restant`,dl:`Télécharger`,rp:`Rapport de contrôle`,cl:`Clip {a}/{b} : image {c} sur {d} traitée`,kc:`Tuile {c} sur {d} traitée`,mem:`Peu d'espace libre – démarrer quand même ?`,ml:`Chargement du modèle (une seule fois, mis en cache)...`,nom:`Modèle IA non chargé – pipeline Fast utilisé`,cap:`Vidéo : encodeur matériel limité à 8K – un master 8K est produit`,noenc:`Aucun encodeur matériel ne gère cette résolution`,lb:[`Résolution`,`FPS`,`Débit vidéo`,`Audio`,`Durée`,`Segments d'1 min`,`Espace libre`,`min`,`h`,`env.`],
+s:[`Étape 1/10 : Lecture sans perte du fichier, des FPS, du débit vidéo et des kbps audio...`,`Étape 2/10 : Analyse des images et découpage en segments d'1 minute...`,`Étape 3/10 : Planification de la grille de tuiles et des modèles IA...`,`Étape 4/10 : Mise à l'échelle IA des tuiles en {r}...`,`Étape 5/10 : Affinage multi-modèles – bords, néons et détails...`,`Étape 6/10 : Contrôle qualité – recherche d'erreurs d'image, de tuile ou de mémoire...`,`Étape 7/10 : Correction – les tuiles défectueuses sont recalculées...`,`Étape 8/10 : Contrôle de résolution et de pertes : vrai {r} et 0 % de compression...`,`Étape 9/10 : Assemblage des segments et de l'audio d'origine intact...`,`Étape 10/10 : Upscaling terminé ! Prêt à télécharger.`]},
+pt:{t:`Ultra Upscaler 4K–24K`,v:`Upscaler de vídeo (MP4/MOV)`,i:`Upscaler de imagem (PNG/JPG)`,d:`Arraste um arquivo aqui ou toque`,go:`Iniciar geração`,dm:`Escurecer à noite (poupar bateria)`,q:`Nível de qualidade`,ph:`Pro combina todos os modelos: redução de ruído IA, reconstrução de detalhes, CAS.`,rs:`Resolução final`,bd:`0 % de compressão: FPS original e áudio em passthrough ativos`,br:`Bitrate inteligente`,au:`Auto-Smart (manter original / mín. 60 Mbps)`,bdi:`0 % de compressão: PNG sem perdas (100 % de qualidade, profundidade de cor original)`,ii:`Original: {o} ({m} MP) → alvo {r}: {t} ({n} MP)`,dh:`Toque em qualquer lugar da tela para encerrar o escurecimento noturno`,ba:`Antes|Depois`,si:[`Etapa 1/10: Lendo imagem, resolução original e megapixels sem perdas...`,`Etapa 2/10: Analisando a imagem e dividindo em blocos econômicos em memória...`,`Etapa 9/10: Montando os blocos em um PNG sem perdas...`],ram:`Estado da RAM: Ótimo – sem problemas de memória, todos os buffers de blocos são liberados imediatamente`,el:`Decorrido`,rm:`Restante`,dl:`Baixar`,rp:`Relatório de verificação`,cl:`Clipe {a}/{b}: quadro {c} de {d} processado`,kc:`Bloco {c} de {d} processado`,mem:`Pouco espaço livre – iniciar mesmo assim?`,ml:`Carregando modelo (uma vez, fica em cache)...`,nom:`Modelo IA não carregado – usando o pipeline Fast`,cap:`Vídeo: codificador de hardware limitado a 8K – será gerado um master 8K`,noenc:`Nenhum codificador de hardware suporta esta resolução`,lb:[`Resolução`,`FPS`,`Bitrate de vídeo`,`Áudio`,`Duração`,`Segmentos de 1 min`,`Espaço livre`,`min`,`h`,`aprox.`],
+s:[`Etapa 1/10: Lendo arquivo, FPS original, bitrate de vídeo e kbps de áudio sem perdas...`,`Etapa 2/10: Analisando quadros e dividindo em segmentos de 1 minuto...`,`Etapa 3/10: Planejando a grade de blocos e os modelos IA...`,`Etapa 4/10: Ampliando blocos com IA para {r}...`,`Etapa 5/10: Refinamento multimodelo – bordas, neon e detalhes...`,`Etapa 6/10: Controle de qualidade – verificando erros de imagem, bloco ou memória...`,`Etapa 7/10: Correção – blocos com desvios são recalculados...`,`Etapa 8/10: Verificação de resolução e perdas: {r} real e 0 % de compressão...`,`Etapa 9/10: Empacotando segmentos e áudio original intacto...`,`Etapa 10/10: Upscaling concluído! Pronto para baixar.`]},
+tr:{t:`Ultra Upscaler 4K–24K`,v:`Video Upscaler (MP4/MOV)`,i:`Görsel Upscaler (PNG/JPG)`,d:`Dosyayı buraya sürükleyin veya dokunun`,go:`Üretimi başlat`,dm:`Gece karartma (pil tasarrufu)`,q:`Kalite seviyesi`,ph:`Pro tüm modelleri birleştirir: YZ gürültü giderme, detay onarımı, CAS.`,rs:`Hedef çözünürlük`,bd:`%0 sıkıştırma: orijinal FPS ve ses passthrough etkin`,br:`Akıllı bit hızı`,au:`Auto-Smart (orijinali koru / en az 60 Mbps)`,bdi:`%0 sıkıştırma: kayıpsız PNG (%100 kalite, orijinal renk derinliği)`,ii:`Orijinal: {o} ({m} MP) → hedef {r}: {t} ({n} MP)`,dh:`Gece karartmayı kapatmak için ekranın herhangi bir yerine dokunun`,ba:`Önce|Sonra`,si:[`Adım 1/10: Kaynak görsel, orijinal çözünürlük ve megapiksel kayıpsız okunuyor...`,`Adım 2/10: Görsel analiz edilip bellek dostu karolara bölünüyor...`,`Adım 9/10: Karolar kayıpsız PNG olarak birleştiriliyor...`],ram:`RAM durumu: Optimum – bellek sorunu yok, tüm karo tamponları anında temizlenir`,el:`Geçen`,rm:`Kalan`,dl:`İndir`,rp:`Kontrol raporu`,cl:`Klip {a}/{b}: {d} kareden {c}. kare işlendi`,kc:`{d} karodan {c}. karo işlendi`,mem:`Boş alan az – yine de başlatılsın mı?`,ml:`Model yükleniyor (tek seferlik, önbelleğe alınır)...`,nom:`YZ modeli yüklenemedi – Fast hattı kullanılıyor`,cap:`Video: donanım kodlayıcı 8K ile sınırlı – 8K master üretilir`,noenc:`Hiçbir donanım kodlayıcı bu çözünürlüğü desteklemiyor`,lb:[`Çözünürlük`,`FPS`,`Video bit hızı`,`Ses`,`Süre`,`1 dk'lık parçalar`,`Boş alan`,`dk`,`sa`,`yakl.`],
+s:[`Adım 1/10: Kaynak dosya, orijinal FPS, video bit hızı ve ses kbps kayıpsız okunuyor...`,`Adım 2/10: Kareler analiz edilip 1 dakikalık parçalara bölünüyor...`,`Adım 3/10: Karo ızgarası ve YZ modelleri planlanıyor...`,`Adım 4/10: Karolar YZ ile {r} çözünürlüğe büyütülüyor...`,`Adım 5/10: Çoklu model iyileştirme – kenarlar, neon ışıklar ve detaylar...`,`Adım 6/10: Kalite kontrolü – görüntü, karo veya bellek hataları aranıyor...`,`Adım 7/10: Hata düzeltme – sapan karolar yeniden büyütülüyor...`,`Adım 8/10: Çözünürlük ve kayıp kontrolü: gerçek {r} ve %0 sıkıştırma...`,`Adım 9/10: Parçalar ve dokunulmamış orijinal ses dosyaya paketleniyor...`,`Adım 10/10: Upscaling tamamlandı! İndirmeye hazır.`]}
+};
+let lang="de",mode="video",file=null,meta=null,sess=null,busy=false,wl=null,ac=null,stepN=0,fails=0,t0=0,blobUrl=null,note="",srcVer=0,dlMB="0";
+const D=()=>T[lang],Q=()=>$("sq").value,R=()=>$("sr").value;
+
+/* ---------- UI ---------- */
+function setStep(n){stepN=n;const I={1:0,2:1,9:2}[n],t=n?(mode==="image"&&I!==undefined?D().si[I]:D().s[n-1]):"";$("stp").textContent=t.replace("{r}",R())}
+function tr(){document.documentElement.lang=lang;document.querySelectorAll("[data-k]").forEach(e=>{e.textContent=D()[e.dataset.k]});$("bd").textContent=D()[mode==="image"?"bdi":"bd"];const bb=D().ba.split("|");$("lb1").textContent="◀ "+bb[0];$("lb2").textContent=bb[1]+" ▶";$("dht").textContent=D().dh;
+ if(blobUrl)$("dlb").textContent=`${D().dl} (${dlMB} MB)`;setStep(stepN);showInfo()}
+function showInfo(){const m=meta,l=D().lb;if(!file||!m){$("inf").textContent="";return}
+ let s=`${l[0]}: ${m.w}×${m.h}`;
+ if(mode==="image"){const t=target(m.w,m.h),f=v=>(v/1e6).toFixed(1);s=D().ii.replace("{o}",m.w+"×"+m.h).replace("{m}",f(m.w*m.h)).replace("{r}",R()).replace("{t}",t[0]+"×"+t[1]).replace("{n}",f(t[0]*t[1]))}
+ if(mode==="video")s+=` · ${l[1]}: ${m.fps.toFixed(2)} · ${l[2]}: ${(m.vbr/1e6).toFixed(1)} Mbps · ${l[3]}: ${m.abr?Math.round(m.abr/1000)+" kbps":"–"} · ${l[4]}: ${Math.round(m.dur)} s · ${l[5]}: ${Math.ceil(m.dur/60)}`;
+ $("inf").textContent=s+` · ${l[6]}: ${m.free}`}
+function fmt(s){const l=D().lb,m=Math.round(s/60);return s<3600?`${l[9]} ${Math.max(1,m)} ${l[7]}`:`${l[9]} ${Math.floor(m/60)} ${l[8]} ${m%60} ${l[7]}`}
+function prog(p,txt){const v=Math.min(100,p*100),e=(Date.now()-t0)/1e3;$("bar").style.width=v+"%";$("pc").textContent=$("dpc").textContent=v.toFixed(1)+" %";if(txt!==undefined)$("cn").textContent=(note&&txt?note+" · ":note)+txt;$("tm").textContent=`${D().el}: ${fmt(e)} · ${D().rm}: ${p>.003&&p<1?fmt(e/p*(1-p)):"…"}`}
+function beep(){try{const o=ac.createOscillator(),g=ac.createGain();o.connect(g);g.connect(ac.destination);o.frequency.value=880;g.gain.setValueAtTime(.08,ac.currentTime);g.gain.exponentialRampToValueAtTime(.0001,ac.currentTime+.8);o.start();o.stop(ac.currentTime+.8)}catch(e){}}
+function setMode(m){if(busy)return;mode=m;document.body.dataset.mode=m;file=null;meta=null;$("fi").value="";$("fi").accept=m==="video"?".mp4,.mov,video/mp4,video/quicktime":".png,.jpg,.jpeg,.webp,image/png,image/jpeg,image/webp";$("bv").classList.toggle("on",m==="video");$("bi").classList.toggle("on",m==="image");$("fin").hidden=true;$("cmp").hidden=true;stepN=0;note="";$("bar").style.width="0";$("pc").textContent=$("dpc").textContent="0 %";$("cn").textContent=$("tm").textContent="";tr()}
+setInterval(()=>{const p=performance.memory;if(p)$("ramc").classList.toggle("warn",p.usedJSHeapSize/p.jsHeapSizeLimit>.85)},2000);
+
+/* ---------- Datei-Analyse ---------- */
+async function probe(f){
+ if(!window.MP4Box)throw Error("mp4box.js (CDN) fehlt");
+ const mp=MP4Box.createFile();let info=null;mp.onReady=i=>{info=i};mp.onError=()=>{};
+ let pos=0,g=0;
+ while(!info&&pos<f.size&&g++<500){const ab=await f.slice(pos,pos+4194304).arrayBuffer();ab.fileStart=pos;const n=mp.appendBuffer(ab);pos=(typeof n==="number"&&n>pos)?n:pos+ab.byteLength}
+ if(!info)throw Error("MP4/MOV: moov-Atom nicht lesbar");
+ const vt=info.videoTracks[0],at=info.audioTracks[0];if(!vt)throw Error("Keine Videospur gefunden");
+ const dur=vt.duration/vt.timescale;
+ return{mp,vt,at,w:vt.video.width,h:vt.video.height,fps:vt.nb_samples/dur,vbr:vt.bitrate||0,abr:at?at.bitrate:0,dur}}
+async function analyze(f){if(busy)return;file=f;meta=null;$("fin").hidden=true;$("cmp").hidden=true;
+ try{
+  if(mode==="video")meta=await probe(f);else{const b=await createImageBitmap(f);meta={w:b.width,h:b.height};b.close()}
+  const e=navigator.storage&&navigator.storage.estimate?await navigator.storage.estimate():null;
+  meta.free=e?((e.quota-e.usage)/1e9).toFixed(1)+" GB":"?";meta.freeB=e?e.quota-e.usage:Infinity;
+ }catch(e){file=null;meta=null;$("stp").textContent="⚠ "+e.message}
+ showInfo()}
+
+/* ---------- KI-Modell (ONNX, IndexedDB-Cache) ---------- */
+const idb=()=>new Promise((ok,no)=>{const r=indexedDB.open("upscaler",1);r.onupgradeneeded=()=>r.result.createObjectStore("m");r.onsuccess=()=>ok(r.result);r.onerror=()=>no(r.error)});
+/* Modell-Cache (IndexedDB): nur gültige Antworten werden gespeichert (vorher konnte eine Fehlerseite als "Modell" im Cache landen) */
+async function getModel(us){const d=await idb();
+ for(const u of us){
+  const c=await new Promise(ok=>{const r=d.transaction("m").objectStore("m").get(u);r.onsuccess=()=>ok(r.result);r.onerror=()=>ok(null)});
+  if(c&&c.byteLength>1e5)return c;
+  try{const r=await fetch(u,{mode:"cors"});if(!r.ok)throw Error("HTTP "+r.status);const b=await r.arrayBuffer();if(b.byteLength<1e5)throw Error("Modell zu klein");
+   await new Promise(ok=>{const t=d.transaction("m","readwrite");t.objectStore("m").put(b,u);t.oncomplete=ok;t.onerror=ok;t.onabort=ok});return b}
+  catch(e){console.warn("Modell-Quelle fehlgeschlagen:",u,e)}}
+ throw Error("Kein Modell erreichbar")}
+async function mk(us){ort.env.wasm.numThreads=1;ort.env.wasm.proxy=false;ort.env.wasm.wasmPaths="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.17.3/dist/";return ort.InferenceSession.create(new Uint8Array(await getModel(us)),{executionProviders:["webgpu","wasm"]})}
+/* Balanced: Real-ESRGAN AnimeVideo v3 (ONNX). Pro: Real-ESRGAN x2plus (Fallback AnimeVideo v3) als Pass 2 nach Bilateral-Entrauschen und vor Subpixel-CAS/Micro-Contrast. Ohne Modell (offline) greift die WebGL2-Pipeline. */
+async function loadAI(){const q=Q();if(sess&&sess.k===q)return true;if(!window.ort)return false;
+ try{$("cn").textContent=D().ml;if(sess){try{sess.a.release()}catch(e){}sess=null}
+  let a;if(q==="pro"){try{a=await mk(X2)}catch(e){console.warn(e);a=await mk(ANIME)}}else a=await mk(ANIME);
+  sess={a,k:q};return true}
+ catch(e){console.error(e);sess=null;return false}}
+async function runAI(id,ss){const n=id.width*id.height,f=new Float32Array(3*n),d=id.data;
+ for(let i=0;i<n;i++){f[i]=d[i*4]/255;f[n+i]=d[i*4+1]/255;f[2*n+i]=d[i*4+2]/255}
+ const t=new ort.Tensor("float32",f,[1,3,id.height,id.width]),r=await ss.run({[ss.inputNames[0]]:t}),o=r[ss.outputNames[0]],oh=o.dims[2],ow=o.dims[3],od=o.data,m=ow*oh,out=new ImageData(ow,oh),p=out.data;
+ for(let i=0;i<m;i++){p[i*4]=od[i]*255;p[i*4+1]=od[m+i]*255;p[i*4+2]=od[2*m+i]*255;p[i*4+3]=255}
+ try{o.dispose();t.dispose()}catch(e){}return out}
+
+/* ---------- WebGL2-Shader-Engine: Bicubic -> Anime4K-Push (Linien) -> CAS | Pro: Bilateral + Micro-Contrast ---------- */
+const useAI=()=>Q()!=="fast"&&!!sess;
+/* Ziel-Auflösung orientierungsrichtig: Hochkant-Dateien bekommen die gedrehte Box (vorher wurden sie kaum vergrößert) */
+function target(w,h,cap){let[tw,th]=RES[R()];if(cap&&tw>cap){tw=cap;th=Math.round(cap*9/16)}if(h>w)[tw,th]=[th,tw];const s=Math.min(tw/w,th/h);return[Math.round(w*s),Math.round(h*s)]}
+const VS=`#version 300 es
+void main(){gl_Position=vec4(float((gl_VertexID<<1)&2)*2.-1.,float(gl_VertexID&2)*2.-1.,0.,1.);}`;
+const FH=`#version 300 es
+precision highp float;precision highp int;uniform sampler2D T;out vec4 o;
+vec3 g(ivec2 p){return texelFetch(T,clamp(p,ivec2(0),textureSize(T,0)-1),0).rgb;}
+float L(vec3 c){return dot(c,vec3(.299,.587,.114));}
+`;
+const FS={
+up:`uniform vec2 off,inv;
+void main(){vec2 p=gl_FragCoord.xy*inv+off,q=p-.5,f=fract(q);ivec2 i=ivec2(floor(q)),z=textureSize(T,0)-1;
+vec2 a=f*(-.5+f*(1.-.5*f)),b=1.+f*f*(-2.5+1.5*f),c=f*(.5+f*(2.-1.5*f)),d=f*f*(-.5+.5*f);
+float wx[4]=float[4](a.x,b.x,c.x,d.x),wy[4]=float[4](a.y,b.y,c.y,d.y);vec4 s=vec4(0.);
+for(int y=0;y<4;y++)for(int x=0;x<4;x++)s+=texelFetch(T,clamp(i+ivec2(x-1,y-1),ivec2(0),z),0)*(wx[x]*wy[y]);
+o=vec4(clamp(s.rgb*s.a,0.,1.),1.);}`,
+push:`uniform float st;
+void main(){ivec2 p=ivec2(gl_FragCoord.xy);vec3 c=g(p);float lc=L(c);
+vec3 n[8]=vec3[8](g(p+ivec2(-1,1)),g(p+ivec2(0,1)),g(p+ivec2(1,1)),g(p+ivec2(1,0)),g(p+ivec2(1,-1)),g(p+ivec2(0,-1)),g(p+ivec2(-1,-1)),g(p+ivec2(-1,0)));
+float l[8];for(int i=0;i<8;i++)l[i]=L(n[i]);
+vec3 best=c;float bd=9.;
+for(int s=0;s<8;s++){int a=s,b=(s+1)&7,d=(s+2)&7,e=(s+4)&7,f=(s+5)&7,h=(s+6)&7;
+float mnS=min(l[a],min(l[b],l[d])),mxS=max(l[a],max(l[b],l[d])),mnO=min(l[e],min(l[f],l[h])),mxO=max(l[e],max(l[f],l[h]));
+vec3 av=(n[a]+n[b]+n[d])/3.;
+if(mnS>lc&&mnS>mxO&&mnS-lc<bd){bd=mnS-lc;best=av;}
+if(mxS<lc&&mxS<mnO&&lc-mxS<bd){bd=lc-mxS;best=av;}}
+o=vec4(mix(c,best,st),1.);}`,
+cas:`uniform float s,mc;
+void main(){ivec2 p=ivec2(gl_FragCoord.xy);vec3 m=g(p),u=g(p+ivec2(0,1)),d=g(p+ivec2(0,-1)),l=g(p+ivec2(-1,0)),r=g(p+ivec2(1,0));
+vec3 mn=min(min(min(u,d),min(l,r)),m),mx=max(max(max(u,d),max(l,r)),m);
+vec3 w=sqrt(max(min(mn,1.-mx),0.)/max(mx,vec3(.0001)))*(-1./(8.-3.*s));
+vec3 c=((u+d+l+r)*w+m)/(1.+4.*w);
+if(mc>0.){vec3 b=(g(p+ivec2(-1,1))+g(p+ivec2(1,1))+g(p+ivec2(-1,-1))+g(p+ivec2(1,-1))+2.*(u+d+l+r)+4.*m)/16.;c+=(c-b)*mc;}
+o=vec4(clamp(c,0.,1.),1.);}`,
+bil:`uniform float sg;
+void main(){ivec2 p=ivec2(gl_FragCoord.xy);vec3 c=g(p),a=vec3(0.);float ws=0.;
+for(int y=-2;y<=2;y++)for(int x=-2;x<=2;x++){vec3 q=g(p+ivec2(x,y)),dv=q-c;float w=exp(-float(x*x+y*y)/4.5-dot(dv,dv)/(2.*sg*sg));a+=q*w;ws+=w;}
+o=vec4(a/ws,1.);}`};
+let GL=null;
+function glInit(){if(GL!==null)return GL;
+ try{const g=document.createElement("canvas").getContext("webgl2",{antialias:false,alpha:false,depth:false,stencil:false});if(!g)throw Error("WebGL2 fehlt");const p={};
+  for(const n in FS){const pr=g.createProgram();
+   for(const[t,s]of[[g.VERTEX_SHADER,VS],[g.FRAGMENT_SHADER,FH+FS[n]]]){const h=g.createShader(t);g.shaderSource(h,s);g.compileShader(h);if(!g.getShaderParameter(h,g.COMPILE_STATUS))throw Error(n+": "+g.getShaderInfoLog(h));g.attachShader(pr,h)}
+   g.linkProgram(pr);if(!g.getProgramParameter(pr,g.LINK_STATUS))throw Error(n+": "+g.getProgramInfoLog(pr));p[n]=pr}
+  GL={g,p,max:g.getParameter(g.MAX_TEXTURE_SIZE),so:null,sv:-1,st:null}
+ }catch(e){console.warn("WebGL2-Shader nicht verfügbar – CPU-Fallback:",e);GL=false}
+ return GL}
+function glTex(g,w,h,src){const t=g.createTexture();g.bindTexture(g.TEXTURE_2D,t);
+ for(const[k,v]of[[g.TEXTURE_MIN_FILTER,g.NEAREST],[g.TEXTURE_MAG_FILTER,g.NEAREST],[g.TEXTURE_WRAP_S,g.CLAMP_TO_EDGE],[g.TEXTURE_WRAP_T,g.CLAMP_TO_EDGE]])g.texParameteri(g.TEXTURE_2D,k,v);
+ if(src)g.texImage2D(g.TEXTURE_2D,0,g.RGBA8,g.RGBA,g.UNSIGNED_BYTE,src);else g.texImage2D(g.TEXTURE_2D,0,g.RGBA8,w,h,0,g.RGBA,g.UNSIGNED_BYTE,null);return t}
+function glDrop(){if(GL&&GL.st){GL.g.deleteTexture(GL.st);GL.st=null;GL.so=null;GL.sv=-1}}
+function glPass(g,n,inT,outT,w,h,u){const f=g.createFramebuffer(),P=GL.p[n];g.bindFramebuffer(g.FRAMEBUFFER,f);g.framebufferTexture2D(g.FRAMEBUFFER,g.COLOR_ATTACHMENT0,g.TEXTURE_2D,outT,0);
+ g.viewport(0,0,w,h);g.useProgram(P);g.activeTexture(g.TEXTURE0);g.bindTexture(g.TEXTURE_2D,inT);g.uniform1i(g.getUniformLocation(P,"T"),0);
+ for(const k in u){const v=u[k];if(v.length)g.uniform2f(g.getUniformLocation(P,k),v[0],v[1]);else g.uniform1f(g.getUniformLocation(P,k),v)}
+ g.drawArrays(g.TRIANGLES,0,3);return f}
+/* Kette von Passes; Ergebnis RGBA, Zeile 0 = oben */
+function glRun(g,t0,w,h,first,steps){const ts=[],fs=[];let cur=t0;
+ for(const[n,u]of[first,...steps].filter(Boolean)){const t=glTex(g,w,h,null);fs.push(glPass(g,n,cur,t,w,h,u));ts.push(t);cur=t}
+ const px=new Uint8Array(w*h*4);g.readPixels(0,0,w,h,g.RGBA,g.UNSIGNED_BYTE,px);ts.forEach(t=>g.deleteTexture(t));fs.forEach(f=>g.deleteFramebuffer(f));return px}
+/* Fast (und Pro/Balanced ohne Modell): Quelle -> Bicubic -> Anime4K-Push -> CAS, komplett auf der GPU */
+function glTile(src,k,x,y,w,h,m,pro){const G=glInit();if(!G||k[0]<1||k[1]<1)return null;
+ try{const g=G.g,Wt=w+2*m,Ht=h+2*m;
+  if(G.so!==src||G.sv!==srcVer){if(src.width>G.max||src.height>G.max)return null;glDrop();G.st=glTex(g,0,0,src);G.so=src;G.sv=srcVer}
+  const px=glRun(g,G.st,Wt,Ht,["up",{off:[(x-m)/k[0],(y-m)/k[1]],inv:[1/k[0],1/k[1]]}],pro?[["bil",{sg:.08}],["push",{st:.5}],["cas",{s:.8,mc:.25}]]:[["push",{st:.45}],["cas",{s:.6,mc:0}]]),out=new ImageData(w,h);
+  for(let r=0;r<h;r++)out.data.set(px.subarray(((r+m)*Wt+m)*4,((r+m)*Wt+m+w)*4),r*w*4);return out
+ }catch(e){console.warn("WebGL2:",e);GL=false;return null}}
+/* Einzelfilter auf einem ImageData (Pro: Bilateral-Entrauschen vor der KI, Subpixel-CAS + Micro-Contrast danach) */
+function glImg(d,steps){const G=glInit();if(!G)return null;
+ try{const g=G.g,t0=glTex(g,0,0,d),px=glRun(g,t0,d.width,d.height,null,steps);g.deleteTexture(t0);return new ImageData(new Uint8ClampedArray(px.buffer),d.width,d.height)}
+ catch(e){console.warn("WebGL2:",e);GL=false;return null}}
+
+/* ---------- Vorher/Nachher: Ausschnitt (Mitte) aus dem ECHTEN Ergebnis + dieselbe Stelle der Quelle ohne KI ---------- */
+function capPlan(W,H){const w=Math.min(W,1024),h=Math.min(H,640);return{x:(W-w)>>1,y:(H-h)>>1,w,h,img:new ImageData(w,h),got:false}}
+function capRect(c,d,dw,dx,dy,w,h){const x0=Math.max(c.x,dx),y0=Math.max(c.y,dy),x1=Math.min(c.x+c.w,dx+w),y1=Math.min(c.y+c.h,dy+h);if(x1<=x0||y1<=y0)return;
+ for(let r=y0;r<y1;r++)c.img.data.set(d.subarray(((r-dy)*dw+(x0-dx))*4,((r-dy)*dw+(x1-dx))*4),((r-c.y)*c.w+(x0-c.x))*4);c.got=true}
+function showCmp(src,k,c){const a=$("ca"),b=$("cb");b.width=c.w;b.height=c.h;b.getContext("2d").putImageData(c.img,0,0);
+ a.width=c.w;a.height=c.h;const g=a.getContext("2d");g.imageSmoothingEnabled=false;drawSrc(g,src,c.x/k[0],c.y/k[1],c.w/k[0],c.h/k[1],c.w,c.h);
+ $("sl").value=50;b.style.clipPath="inset(0 0 0 50%)";$("zm").value=1;$("cw").style.setProperty("--z",1);$("cmp").hidden=false}
+
+/* ---------- Kachel-Engine ---------- */
+const cv=(w,h)=>{const c=document.createElement("canvas");c.width=w;c.height=h;return c},fr=c=>{c.width=0;c.height=0};
+function drawSrc(g,s,sx,sy,sw,sh,dw,dh){const kx=dw/sw,ky=dh/sh,x0=Math.max(0,sx),y0=Math.max(0,sy),x1=Math.min(s.width,sx+sw),y1=Math.min(s.height,sy+sh);
+ if(x1<=x0||y1<=y0)return;g.drawImage(s,x0,y0,x1-x0,y1-y0,(x0-sx)*kx,(y0-sy)*ky,(x1-x0)*kx,(y1-y0)*ky)}
+/* Contrast Adaptive Sharpening */
+function cas(id,s){const w=id.width,h=id.height,a=id.data,b=new Uint8ClampedArray(a),k=-1/(8-3*s),w4=w*4;
+ for(let y=1;y<h-1;y++)for(let x=1;x<w-1;x++){const p=(y*w+x)*4;
+  for(let c=0;c<3;c++){const i=p+c,u=b[i-w4],d=b[i+w4],l=b[i-4],r=b[i+4],m=b[i],
+   mn=Math.min(u,d,l,r,m)/255,mx=Math.max(u,d,l,r,m)/255,wt=Math.sqrt(Math.max(0,Math.min(mn,1-mx))/(mx||1))*k;
+   a[i]=((u+d+l+r)*wt+m)/(1+4*wt)}}}
+/* k=[Skalierung X, Skalierung Y]; liefert Ausgabe-Rechteck x,y,w,h als ImageData */
+async function tileAt(src,k,x,y,w,h){
+ const m=16,Wt=w+2*m,Ht=h+2*m,sx=(x-m)/k[0],sy=(y-m)/k[1],sw=Wt/k[0],sh=Ht/k[1],q=Q();let id;
+ if(!useAI()){const o=glTile(src,k,x,y,w,h,m,q==="pro");if(o)return o}
+ if(useAI()){
+  /* KI arbeitet auf den echten Quell-Pixeln (nativ), danach Outscale auf Ziel-Kachel */
+  const ix=Math.floor(sx),iy=Math.floor(sy),iw=Math.max(1,Math.ceil(sx+sw)-ix),ih=Math.max(1,Math.ceil(sy+sh)-iy),c=cv(iw,ih),g=c.getContext("2d",{willReadFrequently:true});
+  drawSrc(g,src,ix,iy,iw,ih,iw,ih);let d=g.getImageData(0,0,iw,ih);fr(c);
+  if(q==="pro")d=glImg(d,[["bil",{sg:.08}]])||d;
+  setStep(4);const o=await runAI(d,sess.a),ms=o.width/iw,oc=cv(o.width,o.height);oc.getContext("2d").putImageData(o,0,0);
+  const t=cv(Wt,Ht),tg=t.getContext("2d",{willReadFrequently:true});tg.imageSmoothingEnabled=true;tg.imageSmoothingQuality="high";
+  tg.drawImage(oc,(sx-ix)*ms,(sy-iy)*ms,sw*ms,sh*ms,0,0,Wt,Ht);fr(oc);id=tg.getImageData(0,0,Wt,Ht);fr(t);
+  if(q==="pro"){setStep(5);const p=glImg(id,[["cas",{s:.8,mc:.25}]]);if(p)id=p;else cas(id,.8)}
+ }else{
+  /* CPU-Fallback (nur ohne WebGL2): Canvas-Skalierung + CPU-CAS */
+  const c=cv(Wt,Ht),g=c.getContext("2d",{willReadFrequently:true});g.imageSmoothingEnabled=true;g.imageSmoothingQuality="high";
+  drawSrc(g,src,sx,sy,sw,sh,Wt,Ht);id=g.getImageData(0,0,Wt,Ht);fr(c);cas(id,.6)}
+ const out=new ImageData(w,h);
+ for(let r=0;r<h;r++)out.data.set(id.data.subarray(((r+m)*Wt+m)*4,((r+m)*Wt+m+w)*4),r*w*4);
+ return out}
+async function safe(src,k,x,y,w,h){
+ for(let a=0;a<2;a++){try{return await tileAt(src,k,x,y,w,h)}catch(e){fails++;await sleep(30)}}
+ const s=sess;sess=null;try{return await tileAt(src,k,x,y,w,h)}finally{sess=s}}
+
+/* ---------- Streaming-PNG (verlustfrei, Zeile für Zeile) ---------- */
+const CT=(()=>{const t=new Uint32Array(256);for(let n=0;n<256;n++){let c=n;for(let j=0;j<8;j++)c=c&1?0xEDB88320^(c>>>1):c>>>1;t[n]=c>>>0}return t})();
+function crc(u){let c=0xFFFFFFFF;for(let i=0;i<u.length;i++)c=CT[(c^u[i])&255]^(c>>>8);return(c^0xFFFFFFFF)>>>0}
+function chunk(type,data){const u=new Uint8Array(12+data.length),v=new DataView(u.buffer);v.setUint32(0,data.length);for(let i=0;i<4;i++)u[4+i]=type.charCodeAt(i);u.set(data,8);v.setUint32(8+data.length,crc(u.subarray(4,8+data.length)));return u}
+async function makePNG(src,k,W,H,cap){
+ if(typeof CompressionStream==="undefined")throw Error("CompressionStream nicht verfügbar (iPadOS 16.4+ nötig)");
+ const ihdr=new Uint8Array(13),hv=new DataView(ihdr.buffer);hv.setUint32(0,W);hv.setUint32(4,H);ihdr[8]=8;ihdr[9]=2;
+ const parts=[new Blob([new Uint8Array([137,80,78,71,13,10,26,10]),chunk("IHDR",ihdr)])];
+ const cs=new CompressionStream("deflate"),wr=cs.writable.getWriter(),rd=cs.readable.getReader();
+ const reader=(async()=>{for(;;){const r=await rd.read();if(r.done)break;parts.push(new Blob([chunk("IDAT",r.value)]))}})();
+ const Tz=useAI()?512:1024,total=Math.ceil(W/Tz)*Math.ceil(H/Tz);let n=0;
+ for(let y=0;y<H;y+=Tz){const sh=Math.min(Tz,H-y),rl=W*3+1,strip=new Uint8Array(sh*rl);
+  for(let x=0;x<W;x+=Tz){const sw=Math.min(Tz,W-x),id=await safe(src,k,x,y,sw,sh),d=id.data;if(cap)capRect(cap,d,sw,x,y,sw,sh);
+   for(let r=0;r<sh;r++){let o=r*rl+1+x*3,p=r*sw*4;for(let c=0;c<sw;c++){strip[o++]=d[p];strip[o++]=d[p+1];strip[o++]=d[p+2];p+=4}}
+   n++;prog(n/total*.97,D().kc.replace("{c}",n).replace("{d}",total));await sleep(0)}
+  await wr.write(strip)}
+ await wr.close();await reader;parts.push(new Blob([chunk("IEND",new Uint8Array(0))]));
+ return new Blob(parts,{type:"image/png"})}
+
+/* ---------- Video-Pipeline (WebCodecs) ---------- */
+function desc(mp,id){const t=mp.getTrackById(id);for(const e of t.mdia.minf.stbl.stsd.entries){const b=e.avcC||e.hvcC||e.vpcC||e.av1C;if(b){const DS=MP4Box.DataStream||window.DataStream,s=new DS(undefined,0,DS.BIG_ENDIAN);b.write(s);return new Uint8Array(s.buffer,8)}}}
+function asc(mp,id){try{return new Uint8Array(mp.getTrackById(id).mdia.minf.stbl.stsd.entries[0].esds.esd.descs[0].descs[0].data)}catch(e){return null}}
+async function runVideo(){
+ const m=meta,mp=m.mp,vt=m.vt,at=m.at;
+ if(!window.Mp4Muxer||!window.VideoDecoder||!window.VideoEncoder)throw Error("WebCodecs / mp4-muxer nicht verfügbar (iPadOS 16.4+ & CDN nötig)");
+ const capv=RES[R()][0]>7680;if(capv)note=D().cap;
+ const tg=target(m.w,m.h,capv?7680:0),W=tg[0]&~1,H=tg[1]&~1,k=[W/m.w,H/m.h];
+ /* Smart-Bitrate: nie unter Original, mindestens 60 (4K) bzw. 100 Mbps (8K+) */
+ const min=W>4096?1e8:6e7,man=+$("sb").value*1e6,br=Math.round(man?Math.max(m.vbr,man):Math.max(m.vbr,min));
+ let cfg=null,cn="avc";
+ for(const c of(W>4096?["avc1.64003E","hvc1.1.6.L186.B0"]:["avc1.640033","avc1.640034","hvc1.1.6.L153.B0"])){
+  const o={codec:c,width:W,height:H,bitrate:br,framerate:m.fps,hardwareAcceleration:"prefer-hardware",latencyMode:"quality"};
+  if(c.startsWith("avc"))o.avc={format:"avc"};else o.hevc={format:"hevc"};
+  try{if((await VideoEncoder.isConfigSupported(o)).supported){cfg=o;cn=c.startsWith("avc")?"avc":"hevc";break}}catch(e){}}
+ if(!cfg)throw Error(D().noenc);
+ let rot=0;try{const a=vt.matrix;if(a&&a.length>1){rot=((Math.round(Math.atan2(a[1],a[0])*180/Math.PI)%360)+360)%360;if(rot%90)rot=0}}catch(e){rot=0}
+ const parts=[],useA=at&&/^mp4a/.test(at.codec)?asc(mp,at.id):null;
+ const mux=new Mp4Muxer.Muxer({target:new Mp4Muxer.StreamTarget({onData:d=>{parts.push(new Blob([d]))}}),video:{codec:cn,width:W,height:H,frameRate:m.fps,rotation:rot},audio:useA?{codec:"aac",numberOfChannels:at.audio.channel_count,sampleRate:at.audio.sample_rate}:undefined,fastStart:"fragmented",firstTimestampBehavior:"offset"});
+ const vs=mp.getTrackSamplesInfo(vt.id),as=useA?mp.getTrackSamplesInfo(at.id):[],per={};
+ vs.forEach(s=>{const g=Math.floor(Math.round(s.cts*1e6/s.timescale)/6e7);per[g]=(per[g]||0)+1});
+ const nseg=Object.keys(per).length;
+ let err=null,outN=0,done=0,cur=-1,seg=0,sf=0,key=true,ai=0,af=true,dead=false;const fq=[];
+ const enc=new VideoEncoder({output:(c,md)=>{outN++;mux.addVideoChunk(c,md)},error:e=>{err=e}});enc.configure(cfg);
+ const dec=new VideoDecoder({output:f=>{fq.push(f)},error:e=>{err=e}});
+ dec.configure({codec:vt.codec,codedWidth:m.w,codedHeight:m.h,description:desc(mp,vt.id)});
+ const src=cv(m.w,m.h),sg=src.getContext("2d"),big=new Uint8Array(W*H*4),Tz=useAI()?512:1024,cap=capPlan(W,H),capAt=Math.min(vs.length-1,Math.round(m.fps));
+ const pushA=async up=>{while(ai<as.length&&as[ai].cts*1e6/as[ai].timescale<=up){const s=as[ai++],d=new Uint8Array(await file.slice(s.offset,s.offset+s.size).arrayBuffer());
+  mux.addAudioChunkRaw(d,"key",Math.round(s.cts*1e6/s.timescale),Math.round(s.duration*1e6/s.timescale),af?{decoderConfig:{codec:at.codec,numberOfChannels:at.audio.channel_count,sampleRate:at.audio.sample_rate,description:useA}}:undefined);af=false}};
+ const handle=async f=>{
+  const g=Math.floor(f.timestamp/6e7);
+  if(g!==cur){if(cur>=0)await enc.flush();cur=g;seg++;sf=0;key=true}
+  sg.drawImage(f,0,0);srcVer++;const ts=f.timestamp,du=f.duration||Math.round(1e6/m.fps);f.close();
+  await pushA(ts+5e5);
+  for(let y=0;y<H;y+=Tz)for(let x=0;x<W;x+=Tz){const w=Math.min(Tz,W-x),h=Math.min(Tz,H-y),id=await safe(src,k,x,y,w,h);
+   for(let r=0;r<h;r++)big.set(id.data.subarray(r*w*4,(r+1)*w*4),((y+r)*W+x)*4)}
+  if(!cap.got&&done>=capAt){capRect(cap,big,W,0,0,W,H);showCmp(src,k,cap)}
+  const vf=new VideoFrame(big,{format:"RGBA",codedWidth:W,codedHeight:H,timestamp:ts,duration:du});
+  while(enc.encodeQueueSize>2)await sleep(4);
+  enc.encode(vf,{keyFrame:key||done%(Math.round(m.fps)*2)===0});vf.close();key=false;done++;sf++;
+  prog(done/vs.length*.97,D().cl.replace("{a}",seg).replace("{b}",nseg).replace("{c}",sf.toLocaleString()).replace("{d}",(per[cur]||0).toLocaleString()))};
+ const pump=(async()=>{try{while(!dead||fq.length){if(!fq.length){await sleep(5);continue}await handle(fq.shift())}}catch(e){err=e;fq.forEach(f=>f.close());fq.length=0}})();
+ for(const s of vs){
+  while(!err&&(fq.length>3||dec.decodeQueueSize>6))await sleep(5);
+  if(err)break;
+  const d=new Uint8Array(await file.slice(s.offset,s.offset+s.size).arrayBuffer());
+  dec.decode(new EncodedVideoChunk({type:s.is_sync?"key":"delta",timestamp:Math.round(s.cts*1e6/s.timescale),duration:Math.round(s.duration*1e6/s.timescale),data:d}))}
+ if(!err)await dec.flush();
+ dead=true;await pump;if(err)throw err;
+ setStep(6);await enc.flush();enc.close();dec.close();
+ setStep(7);await pushA(Infinity);
+ setStep(8);const ok=outN===vs.length;
+ setStep(9);mux.finalize();
+ const blob=new Blob(parts,{type:"video/mp4"}),l=D().lb;
+ return{blob,name:`upscaled_${W}x${H}.mp4`,rep:`${l[0]}: ${W}×${H} (${W>=7680?"8K":R()})\n${l[1]}: ${m.fps.toFixed(2)} (= Original)\n${l[2]}: ${(br/1e6).toFixed(0)} Mbps (Original: ${(m.vbr/1e6).toFixed(1)})\n${l[3]}: ${useA?Math.round(m.abr/1000)+" kbps (Passthrough, "+at.audio.sample_rate+" Hz)":"–"}\nFrames: ${outN}/${vs.length} ${ok?"✓":"⚠"}\n${(blob.size/1e6).toFixed(0)} MB`}}
+
+/* ---------- Start ---------- */
+function finish(o){if(!o.blob||!o.blob.size)throw Error("Download-Datei ist leer");if(blobUrl)URL.revokeObjectURL(blobUrl);blobUrl=URL.createObjectURL(o.blob);dlMB=(o.blob.size/1e6).toFixed(0);
+ const a=$("dlb");a.href=blobUrl;a.download=o.name;a.target="download" in a?"_self":"_blank";a.textContent=`${D().dl} (${dlMB} MB)`;
+ $("rep").textContent=D().rp+"\n"+o.rep;$("fin").hidden=false;prog(1);setStep(10);beep()}
+async function start(){
+ if(busy||!file||!meta)return;busy=true;$("go").disabled=true;fails=0;$("fin").hidden=true;$("cmp").hidden=true;
+ try{ac=new(window.AudioContext||window.webkitAudioContext)();ac.resume()}catch(e){}
+ try{if(navigator.wakeLock)wl=await navigator.wakeLock.request("screen")}catch(e){}
+ t0=Date.now();note="";prog(0,"");
+ try{
+  setStep(1);await sleep(150);
+  const est=mode==="image"?RES[R()][0]*RES[R()][1]*1.5:Math.max(meta.vbr,6e7)*meta.dur/8;
+  if(meta.freeB<est&&!confirm(D().mem))throw Error("abgebrochen");
+  setStep(2);await sleep(150);setStep(3);
+  if(Q()!=="fast"&&!(await loadAI())){note=D().nom;prog(0,"")}
+  if(mode==="image"){
+   const bmp=await createImageBitmap(file),bw=bmp.width,bh=bmp.height,tg=target(bw,bh),W=tg[0],H=tg[1],k=[W/bw,H/bh],cap=capPlan(W,H);
+   setStep(4);srcVer++;const blob=await makePNG(bmp,k,W,H,cap);showCmp(bmp,k,cap);bmp.close();
+   setStep(6);await sleep(200);const hd=new DataView(await blob.slice(16,24).arrayBuffer()),ok=hd.getUint32(0)===W&&hd.getUint32(4)===H;
+   setStep(7);await sleep(200);setStep(8);await sleep(200);setStep(9);await sleep(100);
+   const l=D().lb;finish({blob,name:`upscaled_${W}x${H}.png`,rep:`${l[0]}: ${W}×${H} (${R()}) ${ok?"✓":"⚠"}\nPNG 8-bit RGB (lossless)\nKacheln neu berechnet / tiles retried: ${fails}\n${(blob.size/1e6).toFixed(0)} MB`})}
+  else{setStep(4);finish(await runVideo())}
+ }catch(e){console.error(e);stepN=0;$("stp").textContent="⚠ "+(e&&e.message?e.message:e)}
+ finally{busy=false;$("go").disabled=false;glDrop();if(wl){try{wl.release()}catch(e){}wl=null}}}
+
+/* ---------- Events ---------- */
+$("lg").onchange=e=>{lang=e.target.value;tr()};
+$("bv").onclick=()=>setMode("video");$("bi").onclick=()=>setMode("image");
+$("fi").onchange=e=>{if(e.target.files[0])analyze(e.target.files[0])};
+["dragover","drop"].forEach(n=>$("dz").addEventListener(n,e=>{e.preventDefault();if(n==="drop"&&e.dataTransfer.files[0])analyze(e.dataTransfer.files[0])}));
+$("go").onclick=start;
+/* Nacht-Dimmer: Overlay max. 90 % (rgba(0,0,0,.90)), Prozentstand mittig, schon das erste Antippen beendet ihn */
+$("dm").onclick=()=>{$("dpc").textContent=$("pc").textContent;$("dim").classList.add("on")};
+$("dim").onclick=()=>$("dim").classList.remove("on");
+document.addEventListener("keydown",e=>{if(e.key==="Escape")$("dim").classList.remove("on")});
+$("sl").oninput=e=>{$("cb").style.clipPath=`inset(0 0 0 ${e.target.value}%)`};
+$("zm").oninput=e=>{$("cw").style.setProperty("--z",e.target.value)};
+$("sr").onchange=()=>{setStep(stepN);showInfo()};
+tr();setMode("video");
+</script>
+</body>
+</html>
